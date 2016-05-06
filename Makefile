@@ -5,6 +5,9 @@ CFLAGS = -g -O3 -xHost -fno-alias -std=c99 -I$(TIMINGDIR)
 matrix_multiplication: matrix_multiplication.o $(TIMINGDIR)/timing.o
 	mpicc -o $@ $(CFLAGS) $^
 
+test: test.o
+	gcc test.c -o test -g
+
 .c.o:
 	$(CC) $(CFLAGS) -c $<
 
