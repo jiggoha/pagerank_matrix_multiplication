@@ -7,6 +7,8 @@
 #include "mpi.h"
 #include "timing.h"
 
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 typedef struct vector {
   int *indices;
   double *values;
@@ -14,14 +16,22 @@ typedef struct vector {
 } Vector;
 
 // function headers
+double *dot_product(Vector *col, Vector *row); // TODO
+void get_counts(int *indices, int size, int *send_counts); // TODO, send_counts is buffer
+void get_displacements(int *send_counts, int size, int *displacements); // TODO, displacements is buffer
+
+// initializations
+Vector *generate_vector(int n);
+void destroy_vector(Vector *vec);
+Vector **generate_matrix(int n);
+void destroy_matrix(Vector **matrix, int n);
+
+// debugging
+Vector **serial(Vector *columns); // TODO
+int are_matrices_same(Vector **serial, Vector **parallel);
+void print_vector(Vector *vec); // TODO
 void print_ints(int *array, int length);
-void print_ints(int *array, int length);
-Vector *generate_matrix(int n);
-Vector *serial(Vector *columns);
-double *dot_product(Vector *col, Vector *row);
-void get_counts(int *indices, int size, int *send_counts); // send_counts is buffer
-void get_displacements(int *send_counts, int size, int *displacements); // displacements is buffer
-void compare(Vector *serial, Vector *parallel);
+void print_doubles(double *array, int length);
 
 int main (int argc, char **argv) {
   srand(12345);
@@ -104,3 +114,41 @@ void destroy_matrix(Vector **matrix, int n) {
 
   free(matrix);
 }
+
+int are_matrices_same(Vector **a, Vector **b, int n) {
+  for (int i = 0; i < n; i++) {
+    if (a[i]->length != b[i]->length) {
+      printf("row %d length doesn't match: %d, %d\n", i, a[i]->length, b[i]->length);
+      return 0;
+    }
+
+    for (int j = 0; j < a[i]->length; j++) {
+      // TODO: change error constant?
+      if (a[i]->indices[j] != b[i]->indices[j] || a[i]->values[j] != b[i]->values[j] > 0.001) {
+        printf("different at element %d, %d\n", i, j);
+        return 0;
+      }
+    }
+  }
+
+  return 1;
+}
+
+// Incorrect right now
+// double dot_product(Vector *a, Vector *b) {
+//   double result = 0.;
+//   int index_a = 0;
+//   int index_b = 0;
+
+//   while (a->indices[index_a] && b->indices[index_b]) {
+//     if (index_a == index_b) {
+//       result += index_a * index_b;
+//     } else if (a->indices[index_a] > b->indices[index_b]) {
+//       index_b++;
+//     } else {
+//       index_a++;
+//     }
+//   }
+
+//   return result;
+// }
