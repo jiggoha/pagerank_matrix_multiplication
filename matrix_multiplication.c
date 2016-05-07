@@ -15,6 +15,11 @@ typedef struct vector {
   int length;
 } Vector;
 
+typedef struct matrix {
+  Vector **vectors;
+  int n;
+} Matrix;
+
 // function headers
 double *dot_product(Vector *col, Vector *row);
 void get_counts(int *indices, int size, int *send_counts); // TODO, send_counts is buffer
@@ -24,13 +29,13 @@ void get_displacements(int *send_counts, int size, int *displacements); // TODO,
 Vector *generate_vector(int n); // TODO: fix randomness
 void destroy_vector(Vector *vec);
 Vector **generate_matrix(int n);
-void destroy_matrix(Vector **matrix, int n);
+void destroy_matrix(Matrix *matrix);
 
 // debugging
-Vector **serial(Vector *columns); // TODO
-int are_matrices_same(Vector **serial, Vector **parallel);
+Vector **serial(Matrix *matrix); // TODO
+int are_matrices_same(Matrix *a, Matrix *b);
 void print_vector(Vector *vec);
-void print_matrix(Vector **matrix, int n);
+void print_matrix(Matrix *matrix);
 void print_ints(int *array, int length);
 void print_doubles(double *array, int length);
 
@@ -58,12 +63,12 @@ void print_vector(Vector *vec) {
   printf("\n");
 }
 
-void print_matrix(Vector **matrix, int n) {
-  for (int i = 0; i < n; i++) {
+void print_matrix(Matrix *matrix) {
+  for (int i = 0; i < matrix->n; i++) {
     printf("column %d:\n", i);
     // printf("length: %d\n", matrix[i]->length);
-    for (int j = 0; j < matrix[i]->length; j++) {
-      printf("matrix[%d][%d] =  %f\n", i, matrix[i]->indices[j], matrix[i]->values[j]);
+    for (int j = 0; j < matrix->vectors[i]->length; j++) {
+      printf("matrix[%d][%d] =  %f\n", i, matrix->vectors[i]->indices[j], matrix->vectors[i]->values[j]);
     }
 
     printf("\n");
@@ -108,13 +113,15 @@ Vector *generate_vector(int n) {
   return vec;
 }
 
-Vector **generate_matrix(int n) {
-  Vector **matrix = malloc(n * sizeof(Vector *));
+Matrix *generate_matrix(int n) {
+  Matrix *matrix = malloc(sizeof(Matrix));
+  matrix->vectors = malloc(sizeof(Vector *) * n);
+  matrix->n = n;
 
   // randomly generate column
   for (int i = 0; i < n; i++) {
-    int length = rand() % n;
-    matrix[i] = generate_vector(length);
+    int length = rand() % (n + 1);
+    matrix->vectors[i] = generate_vector(length);
   }
 
   return matrix;
@@ -129,25 +136,31 @@ void destroy_vector(Vector *vec) {
   free(vec);
 }
 
-void destroy_matrix(Vector **matrix, int n) {
-  for (int i = 0; i < n; i++) {
-    destroy_vector(matrix[i]);
+void destroy_matrix(Matrix *matrix) {
+  for (int i = 0; i < matrix->n; i++) {
+    destroy_vector(matrix->vectors[i]);
   }
 
+  free(matrix->vectors);
   free(matrix);
 }
 
-int are_matrices_same(Vector **a, Vector **b, int n) {
-  for (int i = 0; i < n; i++) {
-    if (a[i]->length != b[i]->length) {
-      printf("row %d length doesn't match: %d, %d\n", i, a[i]->length, b[i]->length);
+int are_matrices_same(Matrix *a, Matrix *b) {
+  if (a->n != b-> n) {
+    printf("not the same dimension\n");
+    return 0;
+  }
+
+  for (int i = 0; i < a->n; i++) {
+    if (a->vectors[i]->length != b->vectors[i]->length) {
+      printf("row %d length doesn't match: %d, %d\n", i, a->vectors[i]->length, b->vectors[i]->length);
       return 0;
     }
 
-    for (int j = 0; j < a[i]->length; j++) {
+    for (int j = 0; j < a->vectors[i]->length; j++) {
       // TODO: change error constant?
-      if (a[i]->indices[j] != b[i]->indices[j] || a[i]->values[j] != b[i]->values[j] > 0.001) {
-        printf("different at element %d, %d\n", i, j);
+      if (a->vectors[i]->indices[j] != b->vectors[i]->indices[j] || abs(a->vectors[i]->values[j] - b->vectors[i]->values[j]) > 0.001) {
+        printf("different at element %d, %d by %f\n", i, j, a->vectors[i]->values[j] - b->vectors[i]->values[j]);
         return 0;
       }
     }
