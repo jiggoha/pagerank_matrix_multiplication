@@ -30,6 +30,7 @@ void destroy_matrix(Vector **matrix, int n);
 Vector **serial(Vector *columns); // TODO
 int are_matrices_same(Vector **serial, Vector **parallel);
 void print_vector(Vector *vec);
+void print_matrix(Vector **matrix, int n);
 void print_ints(int *array, int length);
 void print_doubles(double *array, int length);
 
@@ -57,6 +58,19 @@ void print_vector(Vector *vec) {
   printf("\n");
 }
 
+void print_matrix(Vector **matrix, int n) {
+  for (int i = 0; i < n; i++) {
+    printf("column %d:\n", i);
+    // printf("length: %d\n", matrix[i]->length);
+    for (int j = 0; j < matrix[i]->length; j++) {
+      printf("matrix[%d][%d] =  %f\n", i, matrix[i]->indices[j], matrix[i]->values[j]);
+    }
+
+    printf("\n");
+  }
+  printf("\n");
+}
+
 void print_ints(int *array, int length) {
   for (int i = 0; i < length; i++) {
     printf("%d ", array[i]);
@@ -73,19 +87,20 @@ void print_doubles(double *array, int length) {
 
 Vector *generate_vector(int n) {
   Vector *vec = malloc(sizeof(Vector));
-  
-  if (n == 0) {
-    vec->length = 0;
-  } else {
-    vec->length = rand() % n;
+  vec->length = n;
+
+  if (n != 0) {
+    vec->length = n;
     
     if (vec->length != 0) { 
       vec->indices = malloc(sizeof(int) * vec->length);
       vec->values = malloc(sizeof(double) * vec->length);
 
+      // printf("vec->length = %d\n", vec->length);
       for (int i = 0; i < vec->length; i++) {
         vec->indices[i] = i; // TODO: random list of increasing indices?
-        vec->values[i] = rand() / RAND_MAX;
+        vec->values[i] = (double) rand() / RAND_MAX;
+        // printf("vec[%d] = %f\n", vec->indices[i], vec->values[i]);
       }
     }
   }
