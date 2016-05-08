@@ -27,9 +27,9 @@ void get_counts(int *indices, int length, int *send_counts, int n, int num_procs
 void get_displacements(int *send_counts, int *displacements, int num_procs); 
 
 // initializations
-Vector *generate_vector(int n); // TODO: fix randomness
+Vector *generate_vector(int n, int length, int debug);
 void destroy_vector(Vector *vec);
-Matrix *generate_matrix(int n);
+Matrix *generate_matrix(int n, int debug);
 void destroy_matrix(Matrix *matrix);
 
 // debugging
@@ -105,7 +105,7 @@ void print_doubles(double *array, int length) {
   printf("\n");
 }
 
-Vector *generate_vector(int length) {
+Vector *generate_vector(int n, int length, int debug) {
   Vector *vec = malloc(sizeof(Vector));
   vec->length = length;
 
@@ -113,14 +113,15 @@ Vector *generate_vector(int length) {
     vec->length = length;
     
     if (vec->length != 0) { 
-      vec->indices = malloc(sizeof(int) * vec->length);
+      vec->indices = random_increasing_ints(n, length);
       vec->values = malloc(sizeof(double) * vec->length);
 
-      // printf("vec->length = %d\n", vec->length);
       for (int i = 0; i < vec->length; i++) {
-        vec->indices[i] = i; // TODO: random list of increasing indices?
-        vec->values[i] = (double) rand() / RAND_MAX;
-        // printf("vec[%d] = %f\n", vec->indices[i], vec->values[i]);
+        if (debug) {
+          vec->values[i] = i;
+        } else {
+          vec->values[i] = (double) rand() / RAND_MAX;
+        }
       }
     }
   }
@@ -128,7 +129,7 @@ Vector *generate_vector(int length) {
   return vec;
 }
 
-Matrix *generate_matrix(int n) {
+Matrix *generate_matrix(int n, int debug) {
   Matrix *matrix = malloc(sizeof(Matrix));
   matrix->vectors = malloc(sizeof(Vector *) * n);
   matrix->n = n;
@@ -136,7 +137,8 @@ Matrix *generate_matrix(int n) {
   // randomly generate column
   for (int i = 0; i < n; i++) {
     int length = rand() % (n + 1);
-    matrix->vectors[i] = generate_vector(length);
+
+    matrix->vectors[i] = generate_vector(n, length, debug);
   }
 
   return matrix;
