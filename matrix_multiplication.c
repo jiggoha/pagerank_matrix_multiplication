@@ -45,9 +45,14 @@ void print_matrix(Matrix *matrix);
 void print_ints(int *array, int length);
 void print_doubles(double *array, int length);
 
+// global
+int n;
+
 int main (int argc, char **argv) {
   srand(12345);
+
   //get n from args
+  n = atoi(argv[1])
 
   int n = 8;
   int p = 2;
@@ -120,8 +125,9 @@ Vector *generate_vector(int n, int length, int debug) {
     vec->length = length;
     
     if (vec->length != 0) { 
+      // make enough room for all n
       vec->indices = random_increasing_ints(n, length);
-      vec->values = malloc(sizeof(double) * vec->length);
+      vec->values = malloc(sizeof(double) * n);
 
       for (int i = 0; i < vec->length; i++) {
         if (debug) {
