@@ -28,11 +28,12 @@ void get_displacements(int *send_counts, int size, int *displacements); // TODO,
 // initializations
 Vector *generate_vector(int n); // TODO: fix randomness
 void destroy_vector(Vector *vec);
-Vector **generate_matrix(int n);
+Matrix *generate_matrix(int n);
 void destroy_matrix(Matrix *matrix);
 
 // debugging
-Vector **serial(Matrix *matrix); // TODO
+Matrix *serial(Matrix *matrix); // TODO
+Matrix *transpose_representation(Matrix *matrix);
 int are_matrices_same(Matrix *a, Matrix *b);
 void print_vector(Vector *vec);
 void print_matrix(Matrix *matrix);
@@ -167,6 +168,37 @@ int are_matrices_same(Matrix *a, Matrix *b) {
   }
 
   return 1;
+}
+
+Matrix *transpose_representation(Matrix *matrix) {
+  Matrix *transposed = malloc(sizeof(Matrix));
+  transposed->n = matrix->n;
+  transposed->vectors = malloc(sizeof(Vector *) * matrix->n);
+
+  // memory stuff
+  for (int i = 0; i < matrix->n; i++) {
+    // actually doesn't need to be this long, but it's an upper bound
+    transposed->vectors[i] = malloc(sizeof(Vector));
+    transposed->vectors[i]->length = 0;
+    transposed->vectors[i]->indices = malloc(sizeof(int) * matrix->n);
+    transposed->vectors[i]->values = malloc(sizeof(double) * matrix->n);
+  }
+
+  // fill it up
+  for (int i = 0; i < matrix->n; i++) {
+    for (int j = 0; j < matrix->vectors[i]->length; j++) {
+      int new_i = matrix->vectors[i]->indices[j];
+      double value = matrix->vectors[i]->values[j];
+
+      int next_j = transposed->vectors[new_i]->length;
+      transposed->vectors[new_i]->length++;
+
+      transposed->vectors[new_i]->indices[next_j] = i;
+      transposed->vectors[new_i]->values[next_j] = value;
+    }
+  }
+
+  return transposed;
 }
 
 double dot_product(Vector *a, Vector *b) {
