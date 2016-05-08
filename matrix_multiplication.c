@@ -23,8 +23,8 @@ typedef struct matrix {
 
 // function headers
 double *dot_product(Vector *col, Vector *row);
-void get_counts(int *indices, int size, int *send_counts); // TODO, send_counts is buffer
-void get_displacements(int *send_counts, int size, int *displacements); // TODO, displacements is buffer
+void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); 
+void get_displacements(int *send_counts, int *displacements, int num_procs); 
 
 // initializations
 Vector *generate_vector(int n); // TODO: fix randomness
@@ -33,8 +33,9 @@ Matrix *generate_matrix(int n);
 void destroy_matrix(Matrix *matrix);
 
 // debugging
-Matrix *serial(Matrix *matrix); // TODO
+Matrix *serial(Matrix *matrix, int p); // TODO
 Matrix *transpose_representation(Matrix *matrix);
+
 int are_matrices_same(Matrix *a, Matrix *b);
 void print_vector(Vector *vec);
 void print_matrix(Matrix *matrix);
@@ -43,6 +44,9 @@ void print_doubles(double *array, int length);
 
 int main (int argc, char **argv) {
   srand(12345);
+  //get n from args
+
+  Matrix* matrix = generate_matrix(n);
 
   MPI_Init(&argc, &argv);
 
@@ -55,6 +59,15 @@ int main (int argc, char **argv) {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   MPI_Finalize();
+
+  Matrix* serialResult = serial(matrix, transpose_representation(matrix));
+
+  printf("Are the matrices the same?\n");
+  if(are_matrices_same(serialResult, parallelResult)) {
+    printf("Yes!\n");
+  } else {
+    printf("No :(\n");
+  }
   return 0;
 }
 
@@ -92,12 +105,12 @@ void print_doubles(double *array, int length) {
   printf("\n");
 }
 
-Vector *generate_vector(int n) {
+Vector *generate_vector(int length) {
   Vector *vec = malloc(sizeof(Vector));
-  vec->length = n;
+  vec->length = length;
 
-  if (n != 0) {
-    vec->length = n;
+  if (length != 0) {
+    vec->length = length;
     
     if (vec->length != 0) { 
       vec->indices = malloc(sizeof(int) * vec->length);
@@ -161,7 +174,8 @@ int are_matrices_same(Matrix *a, Matrix *b) {
 
     for (int j = 0; j < a->vectors[i]->length; j++) {
       // TODO: change error constant?
-      if (a->vectors[i]->indices[j] != b->vectors[i]->indices[j] || abs(a->vectors[i]->values[j] - b->vectors[i]->values[j]) > 0.001) {
+      if (a->vectors[i]->indices[j] != b->vectors[i]->indices[j]  
+            || abs(a->vectors[i]->values[j] - b->vectors[i]->values[j]) > 0.001) {
         printf("different at element %d, %d by %f\n", i, j, a->vectors[i]->values[j] - b->vectors[i]->values[j]);
         return 0;
       }
@@ -220,4 +234,33 @@ double dot_product(Vector *a, Vector *b) {
   }
 
   return result;
+}
+
+void get_counts(int *indices, int size, int *send_counts, int n, int num_procs) {
+
+  int k = 0;
+  for(int i = 0; i < num_procs; i++) {
+    send_counts[i] = 0;
+  }
+
+  for(int i = 0; i < num_procs; i++) {
+    while(indices[k] < (i+1) * n/num_procs && k < size) {
+      send_counts[i]++;
+      k++;
+    }
+  }
+}
+
+void get_displacements(int *send_counts, int *displacements, int num_procs) {
+
+  displacements[0] = 0;
+  for(int i = 1; i < num_procs; i++) {
+    displacements[i] = displacements[i - 1] + send_counts[i - 1];
+  }
+}
+
+Matrix *serial(Matrix *matrix, int p) {
+  for(int i = 0; i < p; i++) {
+
+  }
 }
