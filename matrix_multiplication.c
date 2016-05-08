@@ -4,8 +4,8 @@
 #include <stdlib.h> 
 #include <unistd.h> 
 #include <math.h>
-#include "mpi.h"
-#include "timing.h"
+//#include "mpi.h"
+//#include "timing.h"
 #include "random_list.h"
 
 #define DEBUG (0)
@@ -24,7 +24,7 @@ typedef struct matrix {
 } Matrix;
 
 // function headers
-double *dot_product(Vector *col, Vector *row);
+double dot_product(Vector *col, Vector *row);
 void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); 
 void get_displacements(int *send_counts, int *displacements, int num_procs); 
 
@@ -49,28 +49,32 @@ int main (int argc, char **argv) {
   srand(12345);
   //get n from args
 
+  int n = 8;
+  int p = 2;
   Matrix* matrix = generate_matrix(n, (DEBUG < 0));
 
-  MPI_Init(&argc, &argv);
+  //MPI_Init(&argc, &argv);
 
   // number of processes
   int num_procs;
-  MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+  //MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
   
   // rank of process
   int rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  //MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  MPI_Finalize();
+  //MPI_Finalize();
 
+  print_matrix(matrix);
   Matrix* serialResult = serial(matrix, p);
+  print_matrix(serialResult);
 
-  printf("Are the matrices the same?\n");
-  if(are_matrices_same(serialResult, parallelResult)) {
-    printf("Yes!\n");
-  } else {
-    printf("No :(\n");
-  }
+  // printf("Are the matrices the same?\n");
+  // if(are_matrices_same(serialResult, parallelResult)) {
+  //   printf("Yes!\n");
+  // } else {
+  //   printf("No :(\n");
+  // }
   return 0;
 }
 
@@ -198,7 +202,7 @@ int are_matrices_same(Matrix *a, Matrix *b) {
     for (int j = 0; j < a->vectors[i]->length; j++) {
       // TODO: change error constant?
       if (a->vectors[i]->indices[j] != b->vectors[i]->indices[j]  
-            || abs(a->vectors[i]->values[j] - b->vectors[i]->values[j]) > 0.001) {
+            || fabs(a->vectors[i]->values[j] - b->vectors[i]->values[j]) > 0.001) {
         printf("different at element %d, %d by %f\n", i, j, a->vectors[i]->values[j] - b->vectors[i]->values[j]);
         return 0;
       }
@@ -229,20 +233,20 @@ Matrix *transpose_representation(Matrix *matrix) {
   return transposed;
 }
 
-double dot_product(Vector *a, Vector *b) {
+double dot_product(Vector *col, Vector *row) {
   double result = 0.;
-  int index_a = 0;
-  int index_b = 0;
+  int index_col = 0;
+  int index_row = 0;
 
-  while (index_a < a->length  && index_b < b->length) {
-    if (a->indices[index_a] == b->indices[index_b]) {
-      result += a->values[index_a] * b->values[index_b];
-      index_a++;
-      index_b++;
-    } else if (a->indices[index_a] > b->indices[index_b]) {
-      index_b++;
+  while (index_col < col->length  && index_row < row->length) {
+    if (col->indices[index_col] == row->indices[index_row]) {
+      result += col->values[index_col] * row->values[index_row];
+      index_col++;
+      index_row++;
+    } else if (col->indices[index_col] > row->indices[index_row]) {
+      index_row++;
     } else {
-      index_a++;
+      index_col++;
     }
   }
 
@@ -274,9 +278,10 @@ void get_displacements(int *send_counts, int *displacements, int num_procs) {
 
 Matrix *serial(Matrix *matrix_by_cols, int p) {
 
-  Matrix* matrix_by_rows = transpose_representation(matrix);
-  Matrix* temp_by_cols = newMatrix(matrix->n);
-  Matrix* temp_by_rows = newMatrix(matrix->n);
+  int n = matrix_by_cols->n;
+  Matrix* matrix_by_rows = transpose_representation(matrix_by_cols);
+  Matrix* temp_by_cols = newMatrix(n);
+  Matrix* temp_by_rows = newMatrix(n);
   Matrix* temp;
 
   double res;
@@ -295,17 +300,17 @@ Matrix *serial(Matrix *matrix_by_cols, int p) {
     //compute
     for(int j = 0; j < n; j++) {  //cols
       for(int k = 0; k < n; k++) {  //rows
-        if(res = dot_product(matrix->vectors[j], matrix_by_rows->vectors[k]) != 0) {
+        if((res = dot_product(matrix_by_cols->vectors[j], matrix_by_rows->vectors[k])) != 0) {
           temp_by_cols->vectors[j]->indices[col_count] = k;
           temp_by_cols->vectors[j]->values[col_count] = res;
-          count++;
+          col_count++;
           temp_by_rows->vectors[k]->indices[row_counts[k]] = j;
           temp_by_rows->vectors[k]->values[row_counts[k]] = res;
           row_counts[k]++;
         }
       }
       //save column counts
-      temp_by_cols->vectors[j]->length = count;
+      temp_by_cols->vectors[j]->length = col_count;
       col_count = 0;
     } //end computation
 
