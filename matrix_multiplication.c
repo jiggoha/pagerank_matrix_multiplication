@@ -24,7 +24,7 @@ typedef struct matrix {
 } Matrix;
 
 // function headers
-double dot_product(Vector *col, Vector *row);
+double dot_product(Vector *col, Vector *row); 
 void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); 
 void get_displacements(int *send_counts, int *displacements, int num_procs); 
 
@@ -45,18 +45,15 @@ void print_matrix(Matrix *matrix);
 void print_ints(int *array, int length);
 void print_doubles(double *array, int length);
 
-// global
-int n;
-
 int main (int argc, char **argv) {
   srand(12345);
 
   //get n from args
-  n = atoi(argv[1])
+  //n = atoi(argv[1])
 
-  int n = 8;
+  int n = 5;
   int p = 2;
-  Matrix* matrix = generate_matrix(n, (DEBUG < 0));
+  Matrix* matrix = generate_matrix(n, (DEBUG >= 0));
 
   //MPI_Init(&argc, &argv);
 
