@@ -24,9 +24,15 @@ typedef struct matrix {
 } Matrix;
 
 // function headers
+<<<<<<< HEAD
+double dot_product(Vector *col, Vector *row); 
+void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); 
+void get_displacements(int *send_counts, int *displacements, int num_procs); 
+=======
 double dot_product(Vector *col, Vector *row);
 void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); // output: send_counts
 void get_displacements(int *send_counts, int *displacements, int num_procs); // output: displacements 
+>>>>>>> 6411e6de968295429c2217230ab3fd457b839267
 
 // initializations
 Vector *generate_vector(int n, int length, int debug);
@@ -67,7 +73,7 @@ int main (int argc, char **argv) {
 
   if (rank == 0) {
     // generate and distribute 
-    Matrix *matrix = generate_matrix(n, (DEBUG < 0));
+    Matrix *matrix = generate_matrix(n, (DEBUG  >= 0));
   }
 
   MPI_Finalize();
