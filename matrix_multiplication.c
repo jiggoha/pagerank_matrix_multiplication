@@ -6,6 +6,7 @@
 #include <math.h>
 #include "mpi.h"
 #include "timing.h"
+#include "random_list.h"
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
