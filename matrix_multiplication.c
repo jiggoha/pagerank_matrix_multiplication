@@ -7,6 +7,8 @@
 #include "mpi.h"
 #include "timing.h"
 
+#define DEBUG (0)
+
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
 typedef struct vector {
@@ -28,6 +30,7 @@ void get_displacements(int *send_counts, int *displacements, int num_procs);
 // initializations
 Vector *generate_vector(int n); // TODO: fix randomness
 void destroy_vector(Vector *vec);
+Matrix* newMatrix(int n);
 Matrix *generate_matrix(int n);
 void destroy_matrix(Matrix *matrix);
 
@@ -59,7 +62,7 @@ int main (int argc, char **argv) {
 
   MPI_Finalize();
 
-  Matrix* serialResult = serial(matrix, transpose_representation(matrix));
+  Matrix* serialResult = serial(matrix, p);
 
   printf("Are the matrices the same?\n");
   if(are_matrices_same(serialResult, parallelResult)) {
@@ -141,6 +144,24 @@ Matrix *generate_matrix(int n) {
   return matrix;
 }
 
+
+Matrix* newMatrix(int n) {
+  Matrix *new = malloc(sizeof(Matrix));
+  new->n = n;
+  new->vectors = malloc(sizeof(Vector *) * n);
+
+  // memory stuff
+  for (int i = 0; i < n; i++) {
+    // actually doesn't need to be this long, but it's an upper bound
+    new->vectors[i] = malloc(sizeof(Vector));
+    new->vectors[i]->length = 0;
+    new->vectors[i]->indices = malloc(sizeof(int) * n);
+    new->vectors[i]->values = malloc(sizeof(double) * n);
+  }
+
+  return(new);
+}
+
 void destroy_vector(Vector *vec) {
   if (vec->length != 0) {
     free(vec->indices);
@@ -184,20 +205,10 @@ int are_matrices_same(Matrix *a, Matrix *b) {
   return 1;
 }
 
+
 Matrix *transpose_representation(Matrix *matrix) {
-  Matrix *transposed = malloc(sizeof(Matrix));
-  transposed->n = matrix->n;
-  transposed->vectors = malloc(sizeof(Vector *) * matrix->n);
 
-  // memory stuff
-  for (int i = 0; i < matrix->n; i++) {
-    // actually doesn't need to be this long, but it's an upper bound
-    transposed->vectors[i] = malloc(sizeof(Vector));
-    transposed->vectors[i]->length = 0;
-    transposed->vectors[i]->indices = malloc(sizeof(int) * matrix->n);
-    transposed->vectors[i]->values = malloc(sizeof(double) * matrix->n);
-  }
-
+  Matrix* transposed = newMatrix(matrix->n);
   // fill it up
   for (int i = 0; i < matrix->n; i++) {
     for (int j = 0; j < matrix->vectors[i]->length; j++) {
@@ -258,8 +269,61 @@ void get_displacements(int *send_counts, int *displacements, int num_procs) {
   }
 }
 
-Matrix *serial(Matrix *matrix, int p) {
-  for(int i = 0; i < p; i++) {
+Matrix *serial(Matrix *matrix_by_cols, int p) {
 
-  }
+  Matrix* matrix_by_rows = transpose_representation(matrix);
+  Matrix* temp_by_cols = newMatrix(matrix->n);
+  Matrix* temp_by_rows = newMatrix(matrix->n);
+  Matrix* temp;
+
+  double res;
+  int col_count;    //temporary variable to store growing length of column
+  int row_counts[n];    //temporary array to store growing length of rows
+  
+
+  for(int i = 0; i < p; i++) {  //powers
+
+    //init
+    col_count = 0;
+    for(int i = 0; i < n; i++) {
+      row_counts[i] = 0;
+    }
+
+    //compute
+    for(int j = 0; j < n; j++) {  //cols
+      for(int k = 0; k < n; k++) {  //rows
+        if(res = dot_product(matrix->vectors[j], matrix_by_rows->vectors[k]) != 0) {
+          temp_by_cols->vectors[j]->indices[col_count] = k;
+          temp_by_cols->vectors[j]->values[col_count] = res;
+          count++;
+          temp_by_rows->vectors[k]->indices[row_counts[k]] = j;
+          temp_by_rows->vectors[k]->values[row_counts[k]] = res;
+          row_counts[k]++;
+        }
+      }
+      //save column counts
+      temp_by_cols->vectors[j]->length = count;
+      col_count = 0;
+    } //end computation
+
+    //save row counts
+    for(int l = 0; l < n; l++) {
+      temp_by_rows->vectors[l]->length = row_counts[l];
+    }
+
+    //swap pointers
+    temp = matrix_by_cols;
+    matrix_by_cols = temp_by_cols;  //save answer as new base matrix
+    temp_by_cols = temp;  //to be overwritten
+
+    temp = matrix_by_rows;
+    matrix_by_rows = temp_by_rows;  //save answer as new base matrix
+    temp_by_rows = temp;    //to be overwritten
+    
+  } //end powers
+
+  destroy_matrix(temp_by_rows);
+  destroy_matrix(temp_by_cols);
+  destroy_matrix(matrix_by_rows);
+  return(matrix_by_cols);
 }
