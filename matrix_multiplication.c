@@ -25,8 +25,8 @@ typedef struct matrix {
 
 // function headers
 double dot_product(Vector *col, Vector *row);
-void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); 
-void get_displacements(int *send_counts, int *displacements, int num_procs); 
+void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); // output: send_counts
+void get_displacements(int *send_counts, int *displacements, int num_procs); // output: displacements 
 
 // initializations
 Vector *generate_vector(int n, int length, int debug);
@@ -45,41 +45,43 @@ void print_matrix(Matrix *matrix);
 void print_ints(int *array, int length);
 void print_doubles(double *array, int length);
 
-// global
-int n;
-
 int main (int argc, char **argv) {
   srand(12345);
 
-  //get n from args
-  n = atoi(argv[1])
+  if (argc != 3) {
+    fprintf(stderr, "Usage: matrix_multiplication [matrix_length] [power]\n");
+    exit(1);
+  }
+  int n = atoi(argv[1]);
+  int p = atoi(argv[2]) >> 1;
 
-  int n = 8;
-  int p = 2;
-  Matrix* matrix = generate_matrix(n, (DEBUG < 0));
-
-  //MPI_Init(&argc, &argv);
+  MPI_Init(&argc, &argv);
 
   // number of processes
   int num_procs;
-  //MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+  MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
   
   // rank of process
   int rank;
-  //MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  //MPI_Finalize();
+  if (rank == 0) {
+    // generate and distribute 
+    Matrix *matrix = generate_matrix(n, (DEBUG < 0));
+  }
+
+  MPI_Finalize();
 
   print_matrix(matrix);
-  Matrix* serialResult = serial(matrix, p);
+  Matrix *serialResult = serial(matrix, p);
   print_matrix(serialResult);
 
-  // printf("Are the matrices the same?\n");
-  // if(are_matrices_same(serialResult, parallelResult)) {
-  //   printf("Yes!\n");
-  // } else {
-  //   printf("No :(\n");
-  // }
+  printf("Are the matrices the same?\n");
+  if(are_matrices_same(serialResult, parallelResult)) {
+    printf("Yes!\n");
+  } else {
+    printf("No :(\n");
+  }
   return 0;
 }
 
@@ -220,8 +222,8 @@ int are_matrices_same(Matrix *a, Matrix *b) {
 
 
 Matrix *transpose_representation(Matrix *matrix) {
-
   Matrix* transposed = newMatrix(matrix->n);
+
   // fill it up
   for (int i = 0; i < matrix->n; i++) {
     for (int j = 0; j < matrix->vectors[i]->length; j++) {
