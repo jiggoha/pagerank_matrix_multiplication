@@ -9,6 +9,7 @@
 #include "random_list.h"
 
 #define DEBUG (0)
+#define INITIAL_SEND_COL_TAG (1)
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
@@ -65,9 +66,81 @@ int main (int argc, char **argv) {
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+  MPI_Status status;
+
   if (rank == 0) {
     // generate and distribute 
     Matrix *matrix = generate_matrix(n, (DEBUG  >= 0));
+  }
+
+  // call twice:
+  Matrix *col_block = newMatrix(vecs_per_proc, n);
+  Matrix *row_block = newMatrix(vecs_per_proc, n);
+  Matrix *result_block = newMatrix(vecs_per_proc, n);
+
+  // receive/distribute cols
+  for (int i = 0; i < n; i++) {
+    int to_rank = i / num_procs;
+    MPI_Send(&matrix->vectors[i]->length, 1, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+    MPI_Send(matrix->vectors[i]->indices, matrix->vectors[i]->length, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+    MPI_Send(matrix->vectors[i]->values, matrix->vectors[i]->length, MPI_DOUBLE, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+  }
+
+  for (int i = 0; i < vecs_per_proc; i++) {
+    int count;
+    MPI_Recv(&count, 1, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+    MPI_Recv(col_block->vectors[i]->indices, count, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+    MPI_Recv(col_block->vectors[i]->values, count, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+  }
+
+  // buffers
+  int *send_counts = malloc(sizeof(int) * num_procs);
+  int *send_displacements = malloc(sizeof(int) * num_procs);
+
+  int **receive_counts = malloc(sizeof(int *) * vecs_per_proc);
+  for (int i = 0; i < vecs_per_proc; i++) {
+    receive_counts[i] = malloc(sizeof(int) * num_procs);
+  }
+  int *receive_displacements = malloc(sizeof(int) * num_procs);
+
+  // iterate through power number of iterations
+  for (int it = 0; it < p; it++) {
+    // distribute rows
+    for (int i = 0; i < vecs_per_proc; i++) {
+      // send_counts
+      get_counts(col_block->vectors[i]->indices, col_block->vectors[i]->length, send_counts, n, num_procs);
+      get_displacements(send_counts, send_displacements, num_procs);
+
+      // send/receive counts for number of elements
+      MPI_Alltoall(send_counts, 1, MPI_INT, receive_counts[i], 1, MPI_INT, MPI_COMM_WORLD);
+      get_displacements(receive_counts[i], receive_displacements, num_procs);
+
+      // send and receive indices
+      MPI_Alltoallv(col_block->vectors[i]->indices, send_counts, send_displacements, MPI_INT, row_block->vectors[i]->indices, receive_counts[i], receive_displacements, MPI_INT, MPI_COMM_WORLD);
+
+      // send and receive values
+      MPI_Alltoallv(col_block->vectors[i]->values, send_counts, send_displacements, MPI_DOUBLE, row_block->vectors[i]->values, receive_counts[i], receive_displacements, MPI_DOUBLE, MPI_COMM_WORLD);
+    }
+
+    // sort rows
+    for (int i = 0; i < vecs_per_proc; i++) {
+      jay_sort(row_block->vectors[i], receive_counts[i]);
+    }
+
+    // round robin the rows
+    for (int i = 0; i < num_procs; i++) {
+      // calculate dot product
+      for (int x = 0; x < vecs_per_proc; x++) {
+        for (int y = 0; y < vecs_per_proc; y++) {
+          result_block = dot_product(col_block->vectors[x], col_block->vectors[y]);
+        }
+      }
+
+      // swap rows
+      for (int j = 0; j < vecs_per_proc; j++) {
+        
+      }
+    }
   }
 
   MPI_Finalize();
@@ -77,7 +150,7 @@ int main (int argc, char **argv) {
   print_matrix(serialResult);
 
   printf("Are the matrices the same?\n");
-  if(are_matrices_same(serialResult, parallelResult)) {
+  if (are_matrices_same(serialResult, parallelResult)) {
     printf("Yes!\n");
   } else {
     printf("No :(\n");
