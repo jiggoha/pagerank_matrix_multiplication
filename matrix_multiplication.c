@@ -4,12 +4,13 @@
 #include <stdlib.h> 
 #include <unistd.h> 
 #include <math.h>
-//#include "mpi.h"
-//#include "timing.h"
+#include "mpi.h"
+#include "timing.h"
 #include "random_list.h"
 
 #define DEBUG (0)
 #define INITIAL_SEND_COL_TAG (1)
+#define SEND_ROW_TAG (2)
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
@@ -24,10 +25,15 @@ typedef struct matrix {
   int n;
 } Matrix;
 
+// TODO:
+jay_sort();
+
 // function headers
 double dot_product(Vector *col, Vector *row);
 void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); // output: send_counts
-void get_displacements(int *send_counts, int *displacements, int num_procs); // output: displacements 
+void get_displacements(int *send_counts, int *displacements, int num_procs); // output: displacements
+int next_rank(int rank, int num_procs);
+int prev_rank(int rank, int num_procs);
 
 // initializations
 Vector *generate_vector(int n, int length, int debug);
@@ -50,11 +56,12 @@ int main (int argc, char **argv) {
   srand(12345);
 
   if (argc != 3) {
-    fprintf(stderr, "Usage: matrix_multiplication [matrix_length] [power]\n");
+    fprintf(stderr, "Usage: matrix_multiplication [matrix_length] [power] [vecs_per_proc]\n");
     exit(1);
   }
   int n = atoi(argv[1]);
   int p = atoi(argv[2]) >> 1;
+  int vecs_per_proc = atoi(argv[3]);
 
   MPI_Init(&argc, &argv);
 
@@ -68,9 +75,10 @@ int main (int argc, char **argv) {
 
   MPI_Status status;
 
+  Matrix *matrix;
   if (rank == 0) {
     // generate and distribute 
-    Matrix *matrix = generate_matrix(n, (DEBUG  >= 0));
+    matrix = generate_matrix(n, (DEBUG  >= 0));
   }
 
   // call twice:
@@ -127,18 +135,42 @@ int main (int argc, char **argv) {
       jay_sort(row_block->vectors[i], receive_counts[i]);
     }
 
-    // round robin the rows
+    // calculate on rows and round robin
     for (int i = 0; i < num_procs; i++) {
       // calculate dot product
       for (int x = 0; x < vecs_per_proc; x++) {
         for (int y = 0; y < vecs_per_proc; y++) {
-          result_block = dot_product(col_block->vectors[x], col_block->vectors[y]);
+          double result = dot_product(col_block->vectors[x], col_block->vectors[y]);
+
+          // TODO: check indices here
+          // if the double isn't zero, put it in the result_block
+          if (abs(result) < 0.001) {
+            result_block->vectors[y]->values[x] = result;
+            // TODO: put the right thing in the indices array?
+          }
         }
       }
 
       // swap rows
       for (int j = 0; j < vecs_per_proc; j++) {
-        
+        int next_rank = next_rank(rank, num_procs);
+        int prev_rank = prev_rank(rank, num_procs);
+
+        // send count
+        int send_count = row_block->vectors[j]->length;
+        MPI_Send(&send_count, 1, MPI_INT, next_rank, SEND_ROW_TAG, MPI_COMM_WORLD);
+
+        // send actual row
+        MPI_Send(row_block->vectors[j]->indices, send_count, MPI_INT, next_rank, SEND_ROW_TAG, MPI_COMM_WORLD);
+        MPI_Send(row_block->vectors[j]->values, send_count, MPI_DOUBLE, next_rank, SEND_ROW_TAG, MPI_COMM_WORLD);
+
+        // receive count
+        int recv_count;
+        MPI_Recv(&recv_count, 1, MPI_INT, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
+
+        // receive actual row
+        MPI_Recv(row_block->vectors[j]->indices, recv_count, MPI_INT, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
+        MPI_Recv(row_block->vectors[j]->values, recv_count, MPI_DOUBLE, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
       }
     }
   }
@@ -156,6 +188,22 @@ int main (int argc, char **argv) {
     printf("No :(\n");
   }
   return 0;
+}
+
+int next_rank(int rank, int num_procs) {
+  if (rank == num_procs - 1) {
+    return 0;
+  } else {
+    return rank + 1;
+  }
+}
+
+int prev_rank(int rank, int num_procs) {
+  if (rank == 0) {
+    return num_procs - 1;
+  } else {
+    return rank - 1;
+  }
 }
 
 void print_vector(Vector *vec) {
