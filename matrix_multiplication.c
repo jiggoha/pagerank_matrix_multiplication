@@ -32,7 +32,7 @@ void get_displacements(int *send_counts, int *displacements, int num_procs); // 
 // initializations
 Vector *generate_vector(int n, int length, int debug);
 void destroy_vector(Vector *vec);
-Matrix* newMatrix(int n);
+Matrix *newMatrix(int n, int m);
 Matrix *generate_matrix(int n, int debug);
 void destroy_matrix(Matrix *matrix);
 
@@ -233,7 +233,7 @@ Matrix *generate_matrix(int n, int debug) {
 }
 
 
-Matrix* newMatrix(int n) {
+Matrix* newMatrix(int n, int m) {
   Matrix *new = malloc(sizeof(Matrix));
   new->n = n;
   new->vectors = malloc(sizeof(Vector *) * n);
@@ -243,8 +243,8 @@ Matrix* newMatrix(int n) {
     // actually doesn't need to be this long, but it's an upper bound
     new->vectors[i] = malloc(sizeof(Vector));
     new->vectors[i]->length = 0;
-    new->vectors[i]->indices = malloc(sizeof(int) * n);
-    new->vectors[i]->values = malloc(sizeof(double) * n);
+    new->vectors[i]->indices = malloc(sizeof(int) * m);
+    new->vectors[i]->values = malloc(sizeof(double) * m);
   }
 
   return(new);
@@ -295,7 +295,7 @@ int are_matrices_same(Matrix *a, Matrix *b) {
 
 
 Matrix *transpose_representation(Matrix *matrix) {
-  Matrix* transposed = newMatrix(matrix->n);
+  Matrix* transposed = newMatrix(matrix->n, matrix->n);
 
   // fill it up
   for (int i = 0; i < matrix->n; i++) {
@@ -361,8 +361,8 @@ Matrix *serial(Matrix *matrix_by_cols, int p) {
 
   int n = matrix_by_cols->n;
   Matrix* matrix_by_rows = transpose_representation(matrix_by_cols);
-  Matrix* temp_by_cols = newMatrix(n);
-  Matrix* temp_by_rows = newMatrix(n);
+  Matrix* temp_by_cols = newMatrix(n, n);
+  Matrix* temp_by_rows = newMatrix(n, n);
   Matrix* temp;
 
   double res;
