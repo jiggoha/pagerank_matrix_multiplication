@@ -6,6 +6,8 @@
 #include <math.h>
 #include "mpi.h"
 #include "timing.h"
+#include "matrix_multiplication.h"
+#include "prints.h"
 #include "random_list.h"
 
 #define DEBUG (0)
@@ -14,43 +16,6 @@
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
-typedef struct vector {
-  int *indices;
-  double *values;
-  int length;
-} Vector;
-
-typedef struct matrix {
-  Vector **vectors;
-  int n;
-} Matrix;
-
-// TODO:
-jay_sort();
-
-// function headers
-double dot_product(Vector *col, Vector *row);
-void get_counts(int *indices, int length, int *send_counts, int n, int num_procs); // output: send_counts
-void get_displacements(int *send_counts, int *displacements, int num_procs); // output: displacements
-int next_rank(int rank, int num_procs);
-int prev_rank(int rank, int num_procs);
-
-// initializations
-Vector *generate_vector(int n, int length, int debug);
-void destroy_vector(Vector *vec);
-Matrix *newMatrix(int n, int m);
-Matrix *generate_matrix(int n, int debug);
-void destroy_matrix(Matrix *matrix);
-
-// debugging
-Matrix *serial(Matrix *matrix, int p); // TODO
-Matrix *transpose_representation(Matrix *matrix);
-
-int are_matrices_same(Matrix *a, Matrix *b);
-void print_vector(Vector *vec);
-void print_matrix(Matrix *matrix);
-void print_ints(int *array, int length);
-void print_doubles(double *array, int length);
 
 int main (int argc, char **argv) {
   srand(12345);
@@ -84,7 +49,7 @@ int main (int argc, char **argv) {
   // call twice:
   Matrix *col_block = newMatrix(vecs_per_proc, n);
   Matrix *row_block = newMatrix(vecs_per_proc, n);
-  Matrix *result_block = newMatrix(vecs_per_proc, n);
+  Matrix *result_block = newMatrix(vecs_per_proc, n);   //results stored by cols
 
   // receive/distribute cols
   for (int i = 0; i < n; i++) {
@@ -114,6 +79,8 @@ int main (int argc, char **argv) {
   // iterate through power number of iterations
   for (int it = 0; it < p; it++) {
     // distribute rows
+
+    //TODO: LENGTH COMPUTATION
     for (int i = 0; i < vecs_per_proc; i++) {
       // send_counts
       get_counts(col_block->vectors[i]->indices, col_block->vectors[i]->length, send_counts, n, num_procs);
@@ -135,23 +102,26 @@ int main (int argc, char **argv) {
       jay_sort(row_block->vectors[i], receive_counts[i]);
     }
 
+    int col_count = 0; //number of elements so far in result column
+
     // calculate on rows and round robin
     for (int i = 0; i < num_procs; i++) {
       // calculate dot product
-      for (int x = 0; x < vecs_per_proc; x++) {
-        for (int y = 0; y < vecs_per_proc; y++) {
-          double result = dot_product(col_block->vectors[x], col_block->vectors[y]);
-
-          // TODO: check indices here
-          // if the double isn't zero, put it in the result_block
-          if (abs(result) < 0.001) {
-            result_block->vectors[y]->values[x] = result;
-            // TODO: put the right thing in the indices array?
+      for (int x = 0; x < vecs_per_proc; x++) {   // cols
+        for (int y = 0; y < vecs_per_proc; y++) {    // rows
+          double result = dot_product(col_block->vectors[x], row_block->vectors[y]);
+          if (fabs(result) > 0.001) {
+            result_block->vectors[x]->indices[col_count] = y;
+            result_block->vectors[x]->values[col_count] = result;
+            col_count++;
           }
-        }
-      }
+        } // end rows
+        result_block->vectors[x]->length = col_count;
+        col_count = 0;
+      } // end cols
 
-      // swap rows
+      // swap rows  
+      // TODO: possibly use sendrecv?
       for (int j = 0; j < vecs_per_proc; j++) {
         int next_rank = next_rank(rank, num_procs);
         int prev_rank = prev_rank(rank, num_procs);
@@ -174,6 +144,8 @@ int main (int argc, char **argv) {
       }
     }
   }
+
+  //TODO: GATHER RESULTS
 
   MPI_Finalize();
 
@@ -204,40 +176,6 @@ int prev_rank(int rank, int num_procs) {
   } else {
     return rank - 1;
   }
-}
-
-void print_vector(Vector *vec) {
-  for (int i = 0; i < vec->length; i++) {
-    printf("vec[%d] = %f\n", vec->indices[i], vec->values[i]);
-  }
-  printf("\n");
-}
-
-void print_matrix(Matrix *matrix) {
-  for (int i = 0; i < matrix->n; i++) {
-    printf("column %d:\n", i);
-    // printf("length: %d\n", matrix[i]->length);
-    for (int j = 0; j < matrix->vectors[i]->length; j++) {
-      printf("matrix[%d][%d] =  %f\n", i, matrix->vectors[i]->indices[j], matrix->vectors[i]->values[j]);
-    }
-
-    printf("\n");
-  }
-  printf("\n");
-}
-
-void print_ints(int *array, int length) {
-  for (int i = 0; i < length; i++) {
-    printf("%d ", array[i]);
-  }
-  printf("\n");
-}
-
-void print_doubles(double *array, int length) {
-  for (int i = 0; i < length; i++) {
-    printf("%f ", array[i]);
-  }
-  printf("\n");
 }
 
 Vector *generate_vector(int n, int length, int debug) {
@@ -429,7 +367,7 @@ Matrix *serial(Matrix *matrix_by_cols, int p) {
     //compute
     for(int j = 0; j < n; j++) {  //cols
       for(int k = 0; k < n; k++) {  //rows
-        if((res = dot_product(matrix_by_cols->vectors[j], matrix_by_rows->vectors[k])) != 0) {
+        if(fabs(res = dot_product(matrix_by_cols->vectors[j], matrix_by_rows->vectors[k])) > 0.001) {
           temp_by_cols->vectors[j]->indices[col_count] = k;
           temp_by_cols->vectors[j]->values[col_count] = res;
           col_count++;
