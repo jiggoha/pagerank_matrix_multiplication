@@ -44,6 +44,8 @@ int main (int argc, char **argv) {
   if (rank == 0) {
     // generate and distribute 
     matrix = generate_matrix(n, (DEBUG  >= 0));
+    serial_result = newMatrix(n);
+    parallel_result = newMatrix(n);
   }
 
   // call twice:
@@ -161,23 +163,42 @@ int main (int argc, char **argv) {
         MPI_Recv(row_block->vectors[j]->indices, recv_count, MPI_INT, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
         MPI_Recv(row_block->vectors[j]->values, recv_count, MPI_DOUBLE, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
       }
+    } // end round robin
+
+    //swap pointers to prepare for next iteration
+    Matrix* temp = col_block;
+    col_block = result_block;
+    result_block = col_block;
+
+  } // end iterative computation (powers)
+
+  // gather results
+  for (int i = 0; i < vecs_per_proc; i++) {
+    MPI_Send(col_block->vectors[i]->length, 1, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+    MPI_Send(col_block->vectors[i]->indices, col_block->vectors[i]->length, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+    MPI_Send(col_block->vectors[i]->values, col_block->vectors[i]->length, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+  }
+
+  for (int i = 0; i < n; i++) {
+    int count;
+    int from_rank = i / num_procs;
+    MPI_Recv(&count, 1, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+    MPI_Recv(parallel_result->vectors[i]->indices, count, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+    MPI_Recv(parallel_result->vectors[i]->values, count, MPI_DOUBLE, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+  }
+
+  if(rank == 0) {
+    Matrix *serial_result = serial(matrix, p);
+
+    printf("Are the matrices the same?\n");
+    if (are_matrices_same(serial_result, parallel_result)) {
+      printf("Yes!\n");
+    } else {
+      printf("No :(\n");
     }
   }
 
-  //TODO: GATHER RESULTS
-
-  MPI_Finalize();
-
-  print_matrix(matrix);
-  Matrix *serialResult = serial(matrix, p);
-  print_matrix(serialResult);
-
-  printf("Are the matrices the same?\n");
-  if (are_matrices_same(serialResult, parallelResult)) {
-    printf("Yes!\n");
-  } else {
-    printf("No :(\n");
-  }
+  
   return 0;
 }
 
