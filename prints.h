@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 void print_vector(Vector *vec) {
   for (int i = 0; i < vec->length; i++) {
     printf("vec[%d] = %f\n", vec->indices[i], vec->values[i]);

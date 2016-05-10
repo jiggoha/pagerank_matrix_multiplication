@@ -8,6 +8,9 @@ matrix_multiplication: matrix_multiplication.o random_list.o $(TIMINGDIR)/timing
 test: test.o random_list.o
 	gcc test.c -o test -g
 
+matrix_multiplication.o: matrix_multiplication.c matrix_multiplication.h prints.h
+	$(CC) $(CFLAGS) -c $<
+
 .c.o:
 	$(CC) $(CFLAGS) -c $<
 

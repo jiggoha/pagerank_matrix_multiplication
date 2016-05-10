@@ -7,8 +7,7 @@
 #include "mpi.h"
 #include "timing.h"
 #include "matrix_multiplication.h"
-#include "prints.h"
-#include "random_list.h"
+#include "prints.h"T
 
 #define DEBUG (0)
 #define INITIAL_SEND_COL_TAG (1)
@@ -20,12 +19,12 @@
 int main (int argc, char **argv) {
   srand(12345);
 
-  if (argc != 3) {
+  if (argc != 4) {
     fprintf(stderr, "Usage: matrix_multiplication [matrix_length] [power] [vecs_per_proc]\n");
     exit(1);
   }
   int n = atoi(argv[1]);
-  int p = atoi(argv[2]) >> 1;
+  int p = atoi(argv[2]);
   int vecs_per_proc = atoi(argv[3]);
 
   MPI_Init(&argc, &argv);
@@ -41,11 +40,14 @@ int main (int argc, char **argv) {
   MPI_Status status;
 
   Matrix *matrix;
+  Matrix *serial_result;
+  Matrix *parallel_result;
   if (rank == 0) {
     // generate and distribute 
     matrix = generate_matrix(n, (DEBUG  >= 0));
-    serial_result = newMatrix(n);
-    parallel_result = newMatrix(n);
+    print_matrix(matrix);
+    serial_result = newMatrix(n, n);
+    parallel_result = newMatrix(n, n);
   }
 
   // call twice:
@@ -53,19 +55,25 @@ int main (int argc, char **argv) {
   Matrix *row_block = newMatrix(vecs_per_proc, n);
   Matrix *result_block = newMatrix(vecs_per_proc, n);   //results stored by cols
 
-  // receive/distribute cols
-  for (int i = 0; i < n; i++) {
-    int to_rank = i / num_procs;
-    MPI_Send(&matrix->vectors[i]->length, 1, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
-    MPI_Send(matrix->vectors[i]->indices, matrix->vectors[i]->length, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
-    MPI_Send(matrix->vectors[i]->values, matrix->vectors[i]->length, MPI_DOUBLE, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+  //distribute columns
+  if(rank == 0) {
+    for (int i = 0; i < n; i++) {
+      int to_rank = i / vecs_per_proc;
+      printf("Rank %d sending %d items to process %d in iteration %d\n", rank, matrix->vectors[i]->length, to_rank, i);
+      MPI_Send(&matrix->vectors[i]->length, 1, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+      MPI_Send(matrix->vectors[i]->indices, matrix->vectors[i]->length, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+      MPI_Send(matrix->vectors[i]->values, matrix->vectors[i]->length, MPI_DOUBLE, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+    }
   }
 
   for (int i = 0; i < vecs_per_proc; i++) {
     int count;
     MPI_Recv(&count, 1, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+    col_block->vectors[i]->length = count;
     MPI_Recv(col_block->vectors[i]->indices, count, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
     MPI_Recv(col_block->vectors[i]->values, count, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+    printf("rank %d just received the following vector in iteration %d\n", rank, i);
+    print_vector(col_block->vectors[i]);
   }
 
   // buffers
@@ -84,12 +92,14 @@ int main (int argc, char **argv) {
   int new_row_idx;
   int length;
 
-  // iterate through power number of iterations
-  for (int it = 0; it < p; it++) {
-    // distribute rows
+  MPI_Barrier(MPI_COMM_WORLD);
 
-    //TODO: LENGTH COMPUTATION
-    for (int i = 0; i < vecs_per_proc; i++) {
+  // iterate through power number of iterations
+  for(int it = 0; it < p; it++) {
+
+    // distribute rows
+    for(int i = 0; i < vecs_per_proc; i++) {
+      
       // send_counts
       get_counts(col_block->vectors[i]->indices, col_block->vectors[i]->length, send_counts, n, num_procs);
       get_displacements(send_counts, send_displacements, num_procs);
@@ -115,7 +125,11 @@ int main (int argc, char **argv) {
           row_block->vectors[new_row_idx]->values[length] = receive_val_buf[new_row_idx]; //store value
         }
       }
+
+      printf("Rank %d finished recopying its rows\n", rank);
     }
+
+    MPI_Barrier(MPI_COMM_WORLD);
 
     // sort rows
     for (int i = 0; i < vecs_per_proc; i++) {
@@ -143,25 +157,25 @@ int main (int argc, char **argv) {
       // swap rows  
       // TODO: possibly use sendrecv?
       for (int j = 0; j < vecs_per_proc; j++) {
-        int next_rank = next_rank(rank, num_procs);
-        int prev_rank = prev_rank(rank, num_procs);
+        int next = next_rank(rank, num_procs);
+        int prev = prev_rank(rank, num_procs);
 
         // send count
         int send_count = row_block->vectors[j]->length;
-        MPI_Send(&send_count, 1, MPI_INT, next_rank, SEND_ROW_TAG, MPI_COMM_WORLD);
+        MPI_Send(&send_count, 1, MPI_INT, next, SEND_ROW_TAG, MPI_COMM_WORLD);
 
         // send actual row
-        MPI_Send(row_block->vectors[j]->indices, send_count, MPI_INT, next_rank, SEND_ROW_TAG, MPI_COMM_WORLD);
-        MPI_Send(row_block->vectors[j]->values, send_count, MPI_DOUBLE, next_rank, SEND_ROW_TAG, MPI_COMM_WORLD);
+        MPI_Send(row_block->vectors[j]->indices, send_count, MPI_INT, next, SEND_ROW_TAG, MPI_COMM_WORLD);
+        MPI_Send(row_block->vectors[j]->values, send_count, MPI_DOUBLE, next, SEND_ROW_TAG, MPI_COMM_WORLD);
 
         // receive count
         int recv_count;
-        MPI_Recv(&recv_count, 1, MPI_INT, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
+        MPI_Recv(&recv_count, 1, MPI_INT, prev, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
         row_block->vectors[i]->length = recv_count;
 
         // receive actual row
-        MPI_Recv(row_block->vectors[j]->indices, recv_count, MPI_INT, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
-        MPI_Recv(row_block->vectors[j]->values, recv_count, MPI_DOUBLE, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
+        MPI_Recv(row_block->vectors[j]->indices, recv_count, MPI_INT, prev, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
+        MPI_Recv(row_block->vectors[j]->values, recv_count, MPI_DOUBLE, prev, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
       }
     } // end round robin
 
@@ -174,20 +188,21 @@ int main (int argc, char **argv) {
 
   // gather results
   for (int i = 0; i < vecs_per_proc; i++) {
-    MPI_Send(col_block->vectors[i]->length, 1, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
+    MPI_Send(&col_block->vectors[i]->length, 1, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
     MPI_Send(col_block->vectors[i]->indices, col_block->vectors[i]->length, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
     MPI_Send(col_block->vectors[i]->values, col_block->vectors[i]->length, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
   }
 
-  for (int i = 0; i < n; i++) {
-    int count;
-    int from_rank = i / num_procs;
-    MPI_Recv(&count, 1, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
-    MPI_Recv(parallel_result->vectors[i]->indices, count, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
-    MPI_Recv(parallel_result->vectors[i]->values, count, MPI_DOUBLE, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
-  }
-
   if(rank == 0) {
+
+    for (int i = 0; i < n; i++) {
+      int count;
+      int from_rank = i / num_procs;
+      MPI_Recv(&count, 1, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+      MPI_Recv(parallel_result->vectors[i]->indices, count, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+      MPI_Recv(parallel_result->vectors[i]->values, count, MPI_DOUBLE, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+    }
+
     Matrix *serial_result = serial(matrix, p);
 
     printf("Are the matrices the same?\n");
