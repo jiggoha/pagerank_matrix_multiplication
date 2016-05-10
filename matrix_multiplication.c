@@ -70,11 +70,17 @@ int main (int argc, char **argv) {
   int *send_counts = malloc(sizeof(int) * num_procs);
   int *send_displacements = malloc(sizeof(int) * num_procs);
 
-  int **receive_counts = malloc(sizeof(int *) * vecs_per_proc);
-  for (int i = 0; i < vecs_per_proc; i++) {
-    receive_counts[i] = malloc(sizeof(int) * num_procs);
-  }
+  // int **receive_counts = malloc(sizeof(int *) * vecs_per_proc);
+  // for (int i = 0; i < vecs_per_proc; i++) {
+  //   receive_counts[i] = malloc(sizeof(int) * num_procs);
+  // }
+  int *receive_counts = malloc(sizeof(int) * num_procs);
   int *receive_displacements = malloc(sizeof(int) * num_procs);
+  int *receive_idx_buf = malloc(sizeof(int) * n);
+  double *receive_val_buf = malloc(sizeof(int) * n);
+
+  int new_row_idx;
+  int length;
 
   // iterate through power number of iterations
   for (int it = 0; it < p; it++) {
@@ -87,19 +93,31 @@ int main (int argc, char **argv) {
       get_displacements(send_counts, send_displacements, num_procs);
 
       // send/receive counts for number of elements
-      MPI_Alltoall(send_counts, 1, MPI_INT, receive_counts[i], 1, MPI_INT, MPI_COMM_WORLD);
-      get_displacements(receive_counts[i], receive_displacements, num_procs);
+      MPI_Alltoall(send_counts, 1, MPI_INT, receive_counts, 1, MPI_INT, MPI_COMM_WORLD);
+      get_displacements(receive_counts, receive_displacements, num_procs);
 
       // send and receive indices
-      MPI_Alltoallv(col_block->vectors[i]->indices, send_counts, send_displacements, MPI_INT, row_block->vectors[i]->indices, receive_counts[i], receive_displacements, MPI_INT, MPI_COMM_WORLD);
+      MPI_Alltoallv(col_block->vectors[i]->indices, send_counts, send_displacements, MPI_INT, receive_idx_buf, receive_counts, receive_displacements, MPI_INT, MPI_COMM_WORLD);
 
       // send and receive values
-      MPI_Alltoallv(col_block->vectors[i]->values, send_counts, send_displacements, MPI_DOUBLE, row_block->vectors[i]->values, receive_counts[i], receive_displacements, MPI_DOUBLE, MPI_COMM_WORLD);
+      MPI_Alltoallv(col_block->vectors[i]->values, send_counts, send_displacements, MPI_DOUBLE, receive_val_buf, receive_counts, receive_displacements, MPI_DOUBLE, MPI_COMM_WORLD);
+
+      //copy indices and values correctly into rows:
+      for(int j = 0; j < num_procs; j++) {    //process number
+        for(int k = 0; k < receive_counts[j]; k++) {  //number of elements received from process j
+
+          new_row_idx = receive_idx_buf[receive_displacements[j]] + k;    //index of row in which to store
+          length = row_block->vectors[new_row_idx]->length++;             //length of row thus far
+
+          row_block->vectors[new_row_idx]->indices[length] = j * vecs_per_proc + i;   // store index
+          row_block->vectors[new_row_idx]->values[length] = receive_val_buf[new_row_idx]; //store value
+        }
+      }
     }
 
     // sort rows
     for (int i = 0; i < vecs_per_proc; i++) {
-      jay_sort(row_block->vectors[i], receive_counts[i]);
+      jay_sort(row_block->vectors[i]);
     }
 
     int col_count = 0; //number of elements so far in result column
@@ -137,6 +155,7 @@ int main (int argc, char **argv) {
         // receive count
         int recv_count;
         MPI_Recv(&recv_count, 1, MPI_INT, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
+        row_block->vectors[i]->length = recv_count;
 
         // receive actual row
         MPI_Recv(row_block->vectors[j]->indices, recv_count, MPI_INT, prev_rank, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
@@ -341,6 +360,31 @@ void get_displacements(int *send_counts, int *displacements, int num_procs) {
   for(int i = 1; i < num_procs; i++) {
     displacements[i] = displacements[i - 1] + send_counts[i - 1];
   }
+}
+
+void jay_sort(Vector* row) {
+
+  int n = row->length;
+  int d, temp_idx, temp_val;
+
+  //actually insertion sort right now
+  for (int i = 1 ; i <= n - 1; i++) {
+    d = i;
+ 
+    while (d > 0 && row->indices[d] < row->indices[d-1]) {
+      temp_idx = row->indices[d];
+      temp_val = row->values[d];
+
+      row->indices[d] = row->indices[d-1];
+      row->values[d] = row->values[d-1];
+      
+      row->indices[d-1] = temp_idx;
+      row->values[d-1] = temp_val;
+ 
+      d--;
+    }
+  }
+
 }
 
 Matrix *serial(Matrix *matrix_by_cols, int p) {
