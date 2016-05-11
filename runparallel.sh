@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 #PBS -l procs=2,tpn=2,mem=34gb
-#PBS -l walltime=30:00
+#PBS -l walltime=1:00:00
 #PBS -N Amelia
 #PBS -r n
 #PBS -j oe
@@ -17,7 +17,7 @@ done
 
 
 #PBS -l procs=8,tpn=2,mem=136gb
-#PBS -l walltime=30:00
+#PBS -l walltime=1:00:00
 #PBS -N Jay
 #PBS -r n
 #PBS -j oe
