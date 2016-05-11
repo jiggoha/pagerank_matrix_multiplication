@@ -186,7 +186,7 @@ int main (int argc, char **argv) {
     //swap pointers to prepare for next iteration
     Matrix* temp = col_block;
     col_block = result_block;
-    result_block = col_block;
+    result_block = temp;
 
   } // end iterative computation (powers)
 
