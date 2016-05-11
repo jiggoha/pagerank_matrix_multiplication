@@ -9,7 +9,7 @@
 #include "matrix_multiplication.h"
 #include "prints.h"T
 
-#define DEBUG (-1)
+#define DEBUG (0)
 #define INITIAL_SEND_COL_TAG (1)
 #define SEND_ROW_TAG (2)
 
@@ -18,6 +18,8 @@
 
 int main (int argc, char **argv) {
   srand(12345);
+  double serial_start_time, serial_end_time, cputime;
+  double parallel_start_time, parallel_end_time;
 
   if (argc != 4) {
     fprintf(stderr, "Usage: matrix_multiplication [matrix_length] [power] [vecs_per_proc]\n");
@@ -57,6 +59,7 @@ int main (int argc, char **argv) {
 
   //distribute columns
   if(rank == 0) {
+    timing(&parallel_start_time, &cputime);
     for (int i = 0; i < n; i++) {
       int to_rank = i / vecs_per_proc;
       MPI_Send(&matrix->vectors[i]->length, 1, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
@@ -78,10 +81,6 @@ int main (int argc, char **argv) {
   int *send_counts = malloc(sizeof(int) * num_procs);
   int *send_displacements = malloc(sizeof(int) * num_procs);
 
-  // int **receive_counts = malloc(sizeof(int *) * vecs_per_proc);
-  // for (int i = 0; i < vecs_per_proc; i++) {
-  //   receive_counts[i] = malloc(sizeof(int) * num_procs);
-  // }
   int *receive_counts = malloc(sizeof(int) * num_procs);
   int *receive_displacements = malloc(sizeof(int) * num_procs);
   int *receive_idx_buf = malloc(sizeof(int) * n);
@@ -94,10 +93,8 @@ int main (int argc, char **argv) {
 
   // iterate through power number of iterations
   for(int it = 0; it < p; it++) {
-
     // distribute rows
     for(int i = 0; i < vecs_per_proc; i++) {
-      
       // send_counts
       get_counts(col_block->vectors[i]->indices, col_block->vectors[i]->length, send_counts, n, num_procs);
       get_displacements(send_counts, send_displacements, num_procs);
@@ -112,14 +109,14 @@ int main (int argc, char **argv) {
       // send and receive values
       MPI_Alltoallv(col_block->vectors[i]->values, send_counts, send_displacements, MPI_DOUBLE, receive_val_buf, receive_counts, receive_displacements, MPI_DOUBLE, MPI_COMM_WORLD);
 
-      //copy indices and values correctly into rows:
-      for(int j = 0; j < num_procs; j++) {    //process number
-        for(int k = 0; k < receive_counts[j]; k++) {  //number of elements received from process j
+      // copy indices and values correctly into rows:
+      for (int j = 0; j < num_procs; j++) {    //process number
+        for (int k = 0; k < receive_counts[j]; k++) {  //number of elements received from process j
 
           // index to location in the receive_idx_buf and receive_val_buf buffers
           int buf_i = receive_displacements[j] + k;
 
-          //index of row in which to store, subtracting so that row indices start at 0 for each proc
+          // index of row in which to store, subtracting so that row indices start at 0 for each proc
           new_row_idx = receive_idx_buf[buf_i] - vecs_per_proc * rank;   
           length = row_block->vectors[new_row_idx]->length++;             //length of row thus far
 
@@ -134,28 +131,22 @@ int main (int argc, char **argv) {
       jay_sort(row_block->vectors[i]);
     }
 
-    int col_count = 0; //number of elements so far in result column
-
     // calculate on rows and round robin
     for (int i = 0; i < num_procs; i++) {
       // calculate dot product
       for (int x = 0; x < vecs_per_proc; x++) {   // cols
-        col_count = result_block->vectors[x]->length;
-
         for (int y = 0; y < vecs_per_proc; y++) {    // rows
           double result = dot_product(col_block->vectors[x], row_block->vectors[y]);
           if (fabs(result) > 0.001) {
-            result_block->vectors[x]->indices[col_count] = (y + rank * vecs_per_proc + vecs_per_proc * i)%n;
-            result_block->vectors[x]->values[col_count] = result;
-            col_count++;
+            int length = result_block->vectors[x]->length;
+            result_block->vectors[x]->indices[length] = (y + rank * vecs_per_proc + vecs_per_proc * i) % n;
+            result_block->vectors[x]->values[length] = result;
+            result_block->vectors[x]->length++;
           }
         } // end rows
-
-        result_block->vectors[x]->length = col_count;
       } // end cols
 
       // swap rows  
-      // TODO: possibly use sendrecv?
       for (int j = 0; j < vecs_per_proc; j++) {
         int next = prev_rank(rank, num_procs);
         int prev = next_rank(rank, num_procs);
@@ -183,11 +174,15 @@ int main (int argc, char **argv) {
       jay_sort(result_block->vectors[w]); 
     }
 
-    //swap pointers to prepare for next iteration
-    Matrix* temp = col_block;
+    // swap pointers to prepare for next iteration
+    Matrix *temp = col_block;
     col_block = result_block;
     result_block = temp;
 
+    // wipe clean the result block
+    for (int w = 0; w < vecs_per_proc; w++) {
+      result_block->vectors[w]->length = 0;
+    }
   } // end iterative computation (powers)
 
   // gather results
@@ -196,6 +191,7 @@ int main (int argc, char **argv) {
     MPI_Send(col_block->vectors[i]->indices, col_block->vectors[i]->length, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
     MPI_Send(col_block->vectors[i]->values, col_block->vectors[i]->length, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
   }
+
 
   if (rank == 0) {
     for (int i = 0; i < n; i++) {
@@ -206,15 +202,12 @@ int main (int argc, char **argv) {
       parallel_result->vectors[i]->length = count;
       MPI_Recv(parallel_result->vectors[i]->indices, count, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
       MPI_Recv(parallel_result->vectors[i]->values, count, MPI_DOUBLE, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
-      print_vector(parallel_result->vectors[i]);
     }
+    timing(&parallel_end_time, &cputime);
 
+    timing(&serial_start_time, &cputime);
     Matrix *serial_result = serial(matrix, p);
-
-    printf("SERIAL:\n");
-    print_matrix(serial_result);
-    printf("\nPARALLEL:\n");
-    print_matrix(parallel_result);
+    timing(&serial_end_time, &cputime);
 
     printf("Are the matrices the same?\n");
     if (are_matrices_same(serial_result, parallel_result)) {
@@ -222,6 +215,9 @@ int main (int argc, char **argv) {
     } else {
       printf("No :(\n");
     }
+
+    printf("Serial time: %f\n", serial_end_time - serial_start_time);
+    printf("Parallel time: %f\n", parallel_end_time - parallel_start_time);
   }
 
   MPI_Finalize();
