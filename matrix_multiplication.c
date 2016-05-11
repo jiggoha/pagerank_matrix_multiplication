@@ -9,7 +9,7 @@
 #include "matrix_multiplication.h"
 #include "prints.h"T
 
-#define DEBUG (0)
+#define DEBUG (-1)
 #define INITIAL_SEND_COL_TAG (1)
 #define SEND_ROW_TAG (2)
 
@@ -21,19 +21,20 @@ int main (int argc, char **argv) {
   double serial_start_time, serial_end_time, cputime;
   double parallel_start_time, parallel_end_time;
 
-  if (argc != 4) {
-    fprintf(stderr, "Usage: matrix_multiplication [matrix_length] [power] [vecs_per_proc]\n");
+  if (argc != 3) {
+    fprintf(stderr, "Usage: matrix_multiplication [matrix_length] [power]\n");
     exit(1);
   }
   int n = atoi(argv[1]);
   int p = atoi(argv[2]);
-  int vecs_per_proc = atoi(argv[3]);
 
   MPI_Init(&argc, &argv);
 
   // number of processes
   int num_procs;
   MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+  int vecs_per_proc = n / num_procs;
   
   // rank of process
   int rank;
@@ -47,7 +48,7 @@ int main (int argc, char **argv) {
   if (rank == 0) {
     // generate and distribute 
     matrix = generate_matrix(n, (DEBUG  >= 0));
-    print_matrix(matrix);
+    // print_matrix(matrix);
     serial_result = newMatrix(n, n);
     parallel_result = newMatrix(n, n);
   }
@@ -57,7 +58,7 @@ int main (int argc, char **argv) {
   Matrix *row_block = newMatrix(vecs_per_proc, n);
   Matrix *result_block = newMatrix(vecs_per_proc, n);   //results stored by cols
 
-  //distribute columns
+  // distribute columns
   if(rank == 0) {
     timing(&parallel_start_time, &cputime);
     for (int i = 0; i < n; i++) {
@@ -74,7 +75,6 @@ int main (int argc, char **argv) {
     col_block->vectors[i]->length = count;
     MPI_Recv(col_block->vectors[i]->indices, count, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
     MPI_Recv(col_block->vectors[i]->values, count, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
-    //printf("rank %d just received the following vector in iteration %d\n", rank, i);
   }
 
   // buffers
@@ -182,6 +182,7 @@ int main (int argc, char **argv) {
     // wipe clean the result block
     for (int w = 0; w < vecs_per_proc; w++) {
       result_block->vectors[w]->length = 0;
+      row_block->vectors[w]->length = 0;
     }
   } // end iterative computation (powers)
 
