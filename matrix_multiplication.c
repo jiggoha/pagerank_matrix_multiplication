@@ -9,7 +9,7 @@
 #include "matrix_multiplication.h"
 #include "prints.h"T
 
-#define DEBUG (-1)
+#define DEBUG (0)
 #define INITIAL_SEND_COL_TAG (1)
 #define SEND_ROW_TAG (2)
 
