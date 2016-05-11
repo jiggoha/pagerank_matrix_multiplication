@@ -135,11 +135,10 @@ int main (int argc, char **argv) {
 
     // calculate on rows and round robin
     for (int i = 0; i < num_procs; i++) {
-
       // swap rows  
       for (int j = 0; j < vecs_per_proc; j++) {
-        int next = prev_rank(rank, num_procs);
-        int prev = next_rank(rank, num_procs);
+        int next = next_rank(rank, num_procs);
+        int prev = prev_rank(rank, num_procs);
 
         // send count
         int send_count = row_block->vectors[j]->length;
@@ -240,7 +239,7 @@ int main (int argc, char **argv) {
   return 0;
 }
 
-int next_rank(int rank, int num_procs) {
+int prev_rank(int rank, int num_procs) {
   if (rank == num_procs - 1) {
     return 0;
   } else {
@@ -248,7 +247,7 @@ int next_rank(int rank, int num_procs) {
   }
 }
 
-int prev_rank(int rank, int num_procs) {
+int next_rank(int rank, int num_procs) {
   if (rank == 0) {
     return num_procs - 1;
   } else {
