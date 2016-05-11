@@ -9,7 +9,7 @@
 #include "matrix_multiplication.h"
 #include "prints.h"T
 
-#define DEBUG (0)
+#define DEBUG (-1)
 #define INITIAL_SEND_COL_TAG (1)
 #define SEND_ROW_TAG (2)
 
@@ -413,7 +413,8 @@ void get_displacements(int *send_counts, int *displacements, int num_procs) {
 void jay_sort(Vector* vec) {
 
   int n = vec->length;
-  int d, temp_idx, temp_val;
+  int d, temp_idx;
+  double temp_val;
 
   //actually insertion sort right now
   for (int i = 1 ; i <= n - 1; i++) {
