@@ -15,7 +15,7 @@ void get_counts(int *indices, int length, int *send_counts, int n, int num_procs
 void get_displacements(int *send_counts, int *displacements, int num_procs); // output: displacements
 int next_rank(int rank, int num_procs);
 int prev_rank(int rank, int num_procs);
-void jay_sort(Vector* row);
+void jay_sort(Vector *vec);
 
 // initializations
 int *random_increasing_ints(int max, int k);
@@ -26,7 +26,7 @@ Matrix *generate_matrix(int n, int debug);
 void destroy_matrix(Matrix *matrix);
 
 // debugging
-Matrix *serial(Matrix *matrix, int p); // TODO
+Matrix *serial(Matrix *matrix, int p);
 Matrix *transpose_representation(Matrix *matrix);
 
 int are_matrices_same(Matrix *a, Matrix *b);
