@@ -116,15 +116,17 @@ int main (int argc, char **argv) {
       //copy indices and values correctly into rows:
       for(int j = 0; j < num_procs; j++) {    //process number
         for(int k = 0; k < receive_counts[j]; k++) {  //number of elements received from process j
+          // index to location in the receive_idx_buf and receive_val_buf buffers
+          int buf_i = receive_displacements[j] + k;
 
-          new_row_idx = receive_idx_buf[receive_displacements[j]] + k;    //index of row in which to store
+          new_row_idx = receive_idx_buf[buf_i];    //index of row in which to store
           length = row_block->vectors[new_row_idx]->length++;             //length of row thus far
           if(rank == DEBUG) {
             printf("Storing at position %d of row %d, the index %d\n", new_row_idx, length, j * vecs_per_proc + i);
           }
 
           row_block->vectors[new_row_idx]->indices[length] = j * vecs_per_proc + i;   // store index
-          row_block->vectors[new_row_idx]->values[length] = receive_val_buf[new_row_idx]; //store value
+          row_block->vectors[new_row_idx]->values[length] = receive_val_buf[buf_i]; //store value
         }
       }
       if(rank == DEBUG) {
