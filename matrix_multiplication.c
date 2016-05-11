@@ -9,7 +9,7 @@
 #include "matrix_multiplication.h"
 #include "prints.h"T
 
-#define DEBUG (0)
+#define DEBUG (1)
 #define INITIAL_SEND_COL_TAG (1)
 #define SEND_ROW_TAG (2)
 
@@ -45,7 +45,7 @@ int main (int argc, char **argv) {
   if (rank == 0) {
     // generate and distribute 
     matrix = generate_matrix(n, (DEBUG  >= 0));
-    print_matrix(matrix);
+    //print_matrix(matrix);
     serial_result = newMatrix(n, n);
     parallel_result = newMatrix(n, n);
   }
@@ -71,7 +71,7 @@ int main (int argc, char **argv) {
     col_block->vectors[i]->length = count;
     MPI_Recv(col_block->vectors[i]->indices, count, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
     MPI_Recv(col_block->vectors[i]->values, count, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
-    printf("rank %d just received the following vector in iteration %d\n", rank, i);
+    //printf("rank %d just received the following vector in iteration %d\n", rank, i);
     print_vector(col_block->vectors[i]);
   }
 
@@ -119,10 +119,17 @@ int main (int argc, char **argv) {
 
           new_row_idx = receive_idx_buf[receive_displacements[j]] + k;    //index of row in which to store
           length = row_block->vectors[new_row_idx]->length++;             //length of row thus far
+          if(rank == DEBUG) {
+            printf("Storing at position %d of row %d, the index %d\n", new_row_idx, length, j * vecs_per_proc + i);
+          }
 
           row_block->vectors[new_row_idx]->indices[length] = j * vecs_per_proc + i;   // store index
           row_block->vectors[new_row_idx]->values[length] = receive_val_buf[new_row_idx]; //store value
         }
+      }
+      if(rank == DEBUG) {
+        printf("Rank %d reporting: \n", rank);
+        print_matrix(row_block);
       }
 
       printf("Rank %d finished recopying its rows\n", rank);
