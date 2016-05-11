@@ -59,7 +59,6 @@ int main (int argc, char **argv) {
   if(rank == 0) {
     for (int i = 0; i < n; i++) {
       int to_rank = i / vecs_per_proc;
-      printf("Rank %d sending %d items to process %d in iteration %d\n", rank, matrix->vectors[i]->length, to_rank, i);
       MPI_Send(&matrix->vectors[i]->length, 1, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
       MPI_Send(matrix->vectors[i]->indices, matrix->vectors[i]->length, MPI_INT, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
       MPI_Send(matrix->vectors[i]->values, matrix->vectors[i]->length, MPI_DOUBLE, to_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
@@ -242,12 +241,19 @@ Vector *generate_vector(int n, int length, int debug) {
     
     if (vec->length != 0) { 
       // make enough room for all n
-      vec->indices = random_increasing_ints(n, length);
+      if(debug) {
+        vec->indices = malloc(sizeof(int) * n);
+        for(int i = 0; i < length; i++) {
+          vec->indices[i] = i;
+        }
+      } else {
+        vec->indices = random_increasing_ints(n, length);
+      }
       vec->values = malloc(sizeof(double) * n);
 
       for (int i = 0; i < vec->length; i++) {
         if (debug) {
-          vec->values[i] = i;
+          vec->values[i] = i + 1;
         } else {
           vec->values[i] = (double) rand() / RAND_MAX;
         }
@@ -263,12 +269,20 @@ Matrix *generate_matrix(int n, int debug) {
   matrix->vectors = malloc(sizeof(Vector *) * n);
   matrix->n = n;
 
-  // randomly generate column
-  for (int i = 0; i < n; i++) {
-    int length = rand() % (n + 1);
+  if(debug) {
+    for(int i = 0; i < n; i++) {
+      int length = (i*7+4)%n;
+      matrix->vectors[i] = generate_vector(n, length, debug);
+    }
+  } else {
+    // randomly generate column
+    for (int i = 0; i < n; i++) {
+      int length = rand() % (n + 1);
 
-    matrix->vectors[i] = generate_vector(n, length, debug);
+      matrix->vectors[i] = generate_vector(n, length, debug);
+    }
   }
+
 
   return matrix;
 }
