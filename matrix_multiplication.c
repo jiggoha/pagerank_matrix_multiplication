@@ -9,7 +9,7 @@
 #include "matrix_multiplication.h"
 #include "prints.h"T
 
-#define DEBUG (1)
+#define DEBUG (-1)
 #define INITIAL_SEND_COL_TAG (1)
 #define SEND_ROW_TAG (2)
 
@@ -45,7 +45,7 @@ int main (int argc, char **argv) {
   if (rank == 0) {
     // generate and distribute 
     matrix = generate_matrix(n, (DEBUG  >= 0));
-    //print_matrix(matrix);
+    print_matrix(matrix);
     serial_result = newMatrix(n, n);
     parallel_result = newMatrix(n, n);
   }
@@ -72,7 +72,6 @@ int main (int argc, char **argv) {
     MPI_Recv(col_block->vectors[i]->indices, count, MPI_INT, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
     MPI_Recv(col_block->vectors[i]->values, count, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
     //printf("rank %d just received the following vector in iteration %d\n", rank, i);
-    print_vector(col_block->vectors[i]);
   }
 
   // buffers
@@ -86,7 +85,7 @@ int main (int argc, char **argv) {
   int *receive_counts = malloc(sizeof(int) * num_procs);
   int *receive_displacements = malloc(sizeof(int) * num_procs);
   int *receive_idx_buf = malloc(sizeof(int) * n);
-  double *receive_val_buf = malloc(sizeof(int) * n);
+  double *receive_val_buf = malloc(sizeof(double) * n);
 
   int new_row_idx;
   int length;
@@ -116,28 +115,19 @@ int main (int argc, char **argv) {
       //copy indices and values correctly into rows:
       for(int j = 0; j < num_procs; j++) {    //process number
         for(int k = 0; k < receive_counts[j]; k++) {  //number of elements received from process j
+
           // index to location in the receive_idx_buf and receive_val_buf buffers
           int buf_i = receive_displacements[j] + k;
 
-          new_row_idx = receive_idx_buf[buf_i];    //index of row in which to store
+          //index of row in which to store, subtracting so that row indices start at 0 for each proc
+          new_row_idx = receive_idx_buf[buf_i] - vecs_per_proc * rank;   
           length = row_block->vectors[new_row_idx]->length++;             //length of row thus far
-          if(rank == DEBUG) {
-            printf("Storing at position %d of row %d, the index %d\n", new_row_idx, length, j * vecs_per_proc + i);
-          }
 
           row_block->vectors[new_row_idx]->indices[length] = j * vecs_per_proc + i;   // store index
           row_block->vectors[new_row_idx]->values[length] = receive_val_buf[buf_i]; //store value
         }
       }
-      if(rank == DEBUG) {
-        printf("Rank %d reporting: \n", rank);
-        print_matrix(row_block);
-      }
-
-      printf("Rank %d finished recopying its rows\n", rank);
-    }
-
-    MPI_Barrier(MPI_COMM_WORLD);
+    } // end distribute rows
 
     // sort rows
     for (int i = 0; i < vecs_per_proc; i++) {
@@ -150,23 +140,25 @@ int main (int argc, char **argv) {
     for (int i = 0; i < num_procs; i++) {
       // calculate dot product
       for (int x = 0; x < vecs_per_proc; x++) {   // cols
+        col_count = result_block->vectors[x]->length;
+
         for (int y = 0; y < vecs_per_proc; y++) {    // rows
           double result = dot_product(col_block->vectors[x], row_block->vectors[y]);
           if (fabs(result) > 0.001) {
-            result_block->vectors[x]->indices[col_count] = y;
+            result_block->vectors[x]->indices[col_count] = (y + rank * vecs_per_proc + vecs_per_proc * i)%n;
             result_block->vectors[x]->values[col_count] = result;
             col_count++;
           }
         } // end rows
+
         result_block->vectors[x]->length = col_count;
-        col_count = 0;
       } // end cols
 
       // swap rows  
       // TODO: possibly use sendrecv?
       for (int j = 0; j < vecs_per_proc; j++) {
-        int next = next_rank(rank, num_procs);
-        int prev = prev_rank(rank, num_procs);
+        int next = prev_rank(rank, num_procs);
+        int prev = next_rank(rank, num_procs);
 
         // send count
         int send_count = row_block->vectors[j]->length;
@@ -179,13 +171,17 @@ int main (int argc, char **argv) {
         // receive count
         int recv_count;
         MPI_Recv(&recv_count, 1, MPI_INT, prev, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
-        row_block->vectors[i]->length = recv_count;
+        row_block->vectors[j]->length = recv_count;
 
         // receive actual row
         MPI_Recv(row_block->vectors[j]->indices, recv_count, MPI_INT, prev, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
         MPI_Recv(row_block->vectors[j]->values, recv_count, MPI_DOUBLE, prev, SEND_ROW_TAG, MPI_COMM_WORLD, &status);
       }
     } // end round robin
+
+    for(int w = 0; w < vecs_per_proc; w++) {
+      jay_sort(result_block->vectors[w]); 
+    }
 
     //swap pointers to prepare for next iteration
     Matrix* temp = col_block;
@@ -201,17 +197,24 @@ int main (int argc, char **argv) {
     MPI_Send(col_block->vectors[i]->values, col_block->vectors[i]->length, MPI_DOUBLE, 0, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD);
   }
 
-  if(rank == 0) {
-
+  if (rank == 0) {
     for (int i = 0; i < n; i++) {
       int count;
-      int from_rank = i / num_procs;
+      int from_rank = i / vecs_per_proc;
       MPI_Recv(&count, 1, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+      
+      parallel_result->vectors[i]->length = count;
       MPI_Recv(parallel_result->vectors[i]->indices, count, MPI_INT, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
       MPI_Recv(parallel_result->vectors[i]->values, count, MPI_DOUBLE, from_rank, INITIAL_SEND_COL_TAG, MPI_COMM_WORLD, &status);
+      print_vector(parallel_result->vectors[i]);
     }
 
     Matrix *serial_result = serial(matrix, p);
+
+    printf("SERIAL:\n");
+    print_matrix(serial_result);
+    printf("\nPARALLEL:\n");
+    print_matrix(parallel_result);
 
     printf("Are the matrices the same?\n");
     if (are_matrices_same(serial_result, parallel_result)) {
@@ -221,7 +224,7 @@ int main (int argc, char **argv) {
     }
   }
 
-  
+  MPI_Finalize();
   return 0;
 }
 
@@ -250,14 +253,7 @@ Vector *generate_vector(int n, int length, int debug) {
     
     if (vec->length != 0) { 
       // make enough room for all n
-      if(debug) {
-        vec->indices = malloc(sizeof(int) * n);
-        for(int i = 0; i < length; i++) {
-          vec->indices[i] = i;
-        }
-      } else {
-        vec->indices = random_increasing_ints(n, length);
-      }
+      vec->indices = random_increasing_ints(n, length);
       vec->values = malloc(sizeof(double) * n);
 
       for (int i = 0; i < vec->length; i++) {
@@ -278,18 +274,11 @@ Matrix *generate_matrix(int n, int debug) {
   matrix->vectors = malloc(sizeof(Vector *) * n);
   matrix->n = n;
 
-  if(debug) {
-    for(int i = 0; i < n; i++) {
-      int length = (i*7+4)%n;
-      matrix->vectors[i] = generate_vector(n, length, debug);
-    }
-  } else {
-    // randomly generate column
-    for (int i = 0; i < n; i++) {
-      int length = rand() % (n + 1);
+  // randomly generate column
+  for (int i = 0; i < n; i++) {
+    int length = rand() % (n + 1);
 
-      matrix->vectors[i] = generate_vector(n, length, debug);
-    }
+    matrix->vectors[i] = generate_vector(n, length, debug);
   }
 
 
@@ -421,24 +410,24 @@ void get_displacements(int *send_counts, int *displacements, int num_procs) {
   }
 }
 
-void jay_sort(Vector* row) {
+void jay_sort(Vector* vec) {
 
-  int n = row->length;
+  int n = vec->length;
   int d, temp_idx, temp_val;
 
   //actually insertion sort right now
   for (int i = 1 ; i <= n - 1; i++) {
     d = i;
  
-    while (d > 0 && row->indices[d] < row->indices[d-1]) {
-      temp_idx = row->indices[d];
-      temp_val = row->values[d];
+    while (d > 0 && vec->indices[d] < vec->indices[d-1]) {
+      temp_idx = vec->indices[d];
+      temp_val = vec->values[d];
 
-      row->indices[d] = row->indices[d-1];
-      row->values[d] = row->values[d-1];
+      vec->indices[d] = vec->indices[d-1];
+      vec->values[d] = vec->values[d-1];
       
-      row->indices[d-1] = temp_idx;
-      row->values[d-1] = temp_val;
+      vec->indices[d-1] = temp_idx;
+      vec->values[d-1] = temp_val;
  
       d--;
     }
